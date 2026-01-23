@@ -6,3 +6,4 @@ tensorflow
 matplotlib
 nltk
 Sastrawi==1.0.1
+openpyxl
