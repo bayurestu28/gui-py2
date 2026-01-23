@@ -11,9 +11,11 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import json
 import matplotlib.pyplot as plt
 
-nltk.download('punkt_tab', quiet=True)
-
+# --- NLTK resource download otomatis ---
 nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('vader_lexicon', quiet=True)
 
 
 def main():
