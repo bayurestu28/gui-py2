@@ -12,10 +12,18 @@ import json
 import matplotlib.pyplot as plt
 
 # --- NLTK resource download otomatis ---
-nltk.download('punkt', quiet=True)
-nltk.download('punkt_tab', quiet=True)
-nltk.download('stopwords', quiet=True)
-nltk.download('vader_lexicon', quiet=True)
+#nltk.download('punkt', quiet=True)
+#nltk.download('punkt_tab', quiet=True)
+#nltk.download('stopwords', quiet=True)
+#nltk.download('vader_lexicon', quiet=True)
+
+@st.cache_resource
+def download_nltk():
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    nltk.download('vader_lexicon')
+
+download_nltk()
 
 
 def main():
@@ -126,7 +134,7 @@ def main():
             tweet_df['stemming'] = tweet_df['stopword_removal'].apply(get_stemmed_term)
 
 
-            nltk.download('vader_lexicon')
+            # nltk.download('vader_lexicon')
             # Memanfaatkan nltk VADER untuk menggunakan leksikon kustom
             sia2 = SentimentIntensityAnalyzer()
             # membersihkan leksikon VADER default
@@ -279,3 +287,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
