@@ -2,145 +2,153 @@ import streamlit as st
 import pandas as pd
 import re
 import string
-import nltk
-from nltk.corpus import stopwords
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import json
 import matplotlib.pyplot as plt
-from functools import lru_cache
+from pathlib import Path
 
-# --- NLTK resource download otomatis ---
-@st.cache_resource
-def download_nltk():
-    nltk.download('punkt', quiet=True)
-    nltk.download('stopwords', quiet=True)
-    nltk.download('vader_lexicon', quiet=True)
-
-download_nltk()
-
-# --- Inisialisasi stemmer dengan caching per kata ---
-factory = StemmerFactory()
-stemmer = factory.create_stemmer()
-
-@lru_cache(maxsize=10000)
-def cached_stem(word):
-    return stemmer.stem(word)
-
-# --- Inisialisasi stopword dan VADER ---
-list_stopwords = set(stopwords.words('indonesian'))
+# ===========================
+# Setup: VADER Lexicon custom
+# ===========================
 sia = SentimentIntensityAnalyzer()
+# kosongkan lexicon default
+sia.lexicon.clear()
 
-# Update VADER lexicon dengan file sentiwords
-with open('source/_json_sentiwords_id.txt') as f:
-    senti_dict = json.load(f)
-sia.lexicon.update(senti_dict)
+# Load lexicon custom dari file JSON
+lexicon_path = Path("source/_json_sentiwords_id.txt")
+with open(lexicon_path, encoding="utf-8") as f:
+    senti = json.load(f)
+sia.lexicon.update(senti)
 
-# ----------------------------
-# Fungsi preprocessing
-# ----------------------------
-def clean_text(text):
-    if not isinstance(text, str):
-        return ""
-    # Lowercase
-    text = text.lower()
-    # Remove tabs, newline, unicode, URL, mention, hashtag
-    text = re.sub(r'(@\w+|#\w+|http\S+)', ' ', text)
-    text = re.sub(r'\\[tnu]', ' ', text)
-    # Remove punctuation & numbers
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = re.sub(r'\d+', '', text)
-    # Remove extra whitespace
-    text = text.strip()
-    return text
-
-def tokenize(text):
-    return nltk.tokenize.word_tokenize(text)
-
-def remove_stopwords(tokens):
-    return [t for t in tokens if t not in list_stopwords]
-
-def stem_tokens(tokens):
-    return [cached_stem(t) for t in tokens]
-
-def get_compound_score(text):
-    return sia.polarity_scores(text)['compound']
-
-def label_2sent(text):
-    return 'negative' if get_compound_score(text) < 0 else 'positive'
-
-def label_3sent(text):
-    score = get_compound_score(text)
-    if score > 0:
-        return 'positive'
-    elif score < 0:
-        return 'negative'
-    else:
-        return 'neutral'
-
-# ----------------------------
+# ===========================
 # Streamlit App
-# ----------------------------
+# ===========================
 def main():
     st.set_page_config(page_title="Sentiment Analysis App")
-    st.markdown("<h2 style='text-align: center;'>ANALISIS SENTIMEN OPINI MASYARAKAT</h2>", unsafe_allow_html=True)
-    
+    st.markdown("<h2 style='text-align: center;'>Analisis Sentimen Opini Masyarakat Tentang Vaksin Moderna</h2>", unsafe_allow_html=True)
+    st.markdown("<h6 style='text-align: center;'>F.Vivian Praska Wandita | 185314033</h6>", unsafe_allow_html=True)
+    st.write("")
+
     uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
     button_1, button_2, button_3 = st.columns(3)
 
-    if uploaded_file is not None:
+    if uploaded_file:
         df = pd.read_csv(uploaded_file)
 
-        if button_1.button("Proses Preprocessing"):
-            # Cleaning
-            df['clean_text'] = df['text'].apply(clean_text)
-            # Tokenizing
-            df['tokens'] = df['clean_text'].apply(tokenize)
-            # Stopword removal
-            df['tokens_nostop'] = df['tokens'].apply(remove_stopwords)
+        if button_1.button("Proses Preprocessing & Sentiment"):
+            st.info("Sedang memproses data...")
+
+            # -------------------------------
+            # Case folding
+            # -------------------------------
+            df['case_folding'] = df['text'].str.lower()
+
+            # -------------------------------
+            # Remove special chars, links, mentions, numbers, punctuation
+            # -------------------------------
+            def clean_text(text):
+                if not isinstance(text, str):
+                    return ""
+                text = re.sub(r"http\S+|www\S+|https\S+", "", text)
+                text = re.sub(r"[@#]\w+", "", text)
+                text = re.sub(r"\d+", "", text)
+                text = text.translate(str.maketrans("", "", string.punctuation))
+                text = text.strip()
+                return text
+
+            df['clean_text'] = df['case_folding'].apply(clean_text)
+
+            # -------------------------------
+            # Tokenize sederhana (split spasi)
+            # -------------------------------
+            df['tokens'] = df['clean_text'].apply(lambda x: x.split())
+
+            # -------------------------------
+            # Normalisasi kata (lookup Excel)
+            # -------------------------------
+            normalisasi_df = pd.read_excel("source/Normalisasi word.xlsx", engine='openpyxl')
+            normal_dict = dict(zip(normalisasi_df.iloc[:,0], normalisasi_df.iloc[:,1]))
+
+            df['normalized'] = df['tokens'].apply(lambda doc: [normal_dict.get(w, w) for w in doc])
+
+            # -------------------------------
+            # Stopword removal (Sastrawi / NLTK stopwords)
+            # -------------------------------
+            from nltk.corpus import stopwords
+            stopwords_ind = set(stopwords.words('indonesian'))
+            df['no_stopwords'] = df['normalized'].apply(lambda doc: [w for w in doc if w not in stopwords_ind])
+
+            # -------------------------------
             # Stemming
-            df['stemming'] = df['tokens_nostop'].apply(stem_tokens)
-            # Gabungkan menjadi string untuk sentiment
-            df['stemmed_text'] = df['stemming'].apply(lambda x: ' '.join(x))
-            # Sentiment
-            df['compound'] = df['stemmed_text'].apply(get_compound_score)
-            df['sentiment_2'] = df['stemmed_text'].apply(label_2sent)
-            df['sentiment_3'] = df['stemmed_text'].apply(label_3sent)
+            # -------------------------------
+            factory = StemmerFactory()
+            stemmer = factory.create_stemmer()
+            df['stemming'] = df['no_stopwords'].apply(lambda doc: [stemmer.stem(w) for w in doc])
 
-            st.success("✅ Preprocessing dan pelabelan selesai!")
-            st.session_state.df_processed = df
+            # Gabungkan kembali menjadi string untuk sentiment
+            df['stemmed_text'] = df['stemming'].apply(lambda doc: " ".join(doc))
 
-        if button_2.button("Tampilkan Hasil"):
-            if 'df_processed' in st.session_state:
-                st.write(st.session_state.df_processed)
-            else:
-                st.warning("Silakan proses preprocessing terlebih dahulu.")
+            # -------------------------------
+            # Sentiment Analysis (VADER)
+            # -------------------------------
+            def sentiment_label_2sent(text):
+                score = sia.polarity_scores(text)['compound']
+                return 'positive' if score >= 0 else 'negative'
 
-        if button_3.button("Tampilkan Grafik"):
-            if 'df_processed' in st.session_state:
-                df_plot = st.session_state.df_processed
-                fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+            def sentiment_label_3sent(text):
+                score = sia.polarity_scores(text)['compound']
+                if score > 0:
+                    return 'positive'
+                elif score < 0:
+                    return 'negative'
+                else:
+                    return 'neutral'
 
-                # Grafik 3 sentimen
-                counts3 = df_plot['sentiment_3'].value_counts()
-                axs[0].bar(counts3.index, counts3.values, color=['green','red','blue'])
-                axs[0].set_title('3 Sentimen')
-                for i, v in enumerate(counts3.values):
-                    axs[0].text(i, v, str(v), ha='center', va='bottom')
+            df['sentiment_2'] = df['stemmed_text'].apply(sentiment_label_2sent)
+            df['sentiment_3'] = df['stemmed_text'].apply(sentiment_label_3sent)
 
-                # Grafik 2 sentimen
-                counts2 = df_plot['sentiment_2'].value_counts()
-                axs[1].bar(counts2.index, counts2.values, color=['green','red'])
-                axs[1].set_title('2 Sentimen')
-                for i, v in enumerate(counts2.values):
-                    axs[1].text(i, v, str(v), ha='center', va='bottom')
+            # -------------------------------
+            # Simpan session state
+            # -------------------------------
+            st.session_state['df_processed'] = df
+            st.success("Preprocessing dan Sentiment selesai!")
 
-                plt.tight_layout()
-                st.pyplot(fig)
-            else:
-                st.warning("Silakan proses preprocessing terlebih dahulu.")
     else:
-        st.info("Silakan upload file CSV terlebih dahulu.")
+        if 'df_processed' in st.session_state:
+            df = st.session_state['df_processed']
+        else:
+            df = None
 
-if __name__ == '__main__':
+    # ===========================
+    # Button tampilkan hasil
+    # ===========================
+    if button_2.button("Tampilkan Hasil") and df is not None:
+        st.write(df)
+
+    # ===========================
+    # Button tampilkan grafik
+    # ===========================
+    if button_3.button("Tampilkan Grafik") and df is not None:
+        # 3 Sentiment
+        count3 = df['sentiment_3'].value_counts()
+        # 2 Sentiment
+        count2 = df['sentiment_2'].value_counts()
+
+        fig, axs = plt.subplots(1,2,figsize=(12,6))
+        axs[0].bar(count3.index, count3.values, color=['green','red','blue'])
+        axs[0].set_title("3 Sentimen")
+        for i, v in enumerate(count3.values):
+            axs[0].text(i,v,str(v),ha='center',va='bottom')
+
+        axs[1].bar(count2.index, count2.values, color=['green','red'])
+        axs[1].set_title("2 Sentimen")
+        for i, v in enumerate(count2.values):
+            axs[1].text(i,v,str(v),ha='center',va='bottom')
+
+        plt.tight_layout()
+        st.pyplot(fig)
+
+
+if __name__ == "__main__":
     main()
