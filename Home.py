@@ -79,8 +79,8 @@ def main():
             normalizad_word_dict = {}
 
             for index, row in normalizad_word.iterrows():
-                if row[0] not in normalizad_word_dict:
-                    normalizad_word_dict[row[0]] = row[1]
+                if row.iloc[0] not in normalizad_word_dict:
+                    normalizad_word_dict[row.iloc[0]] = row.iloc[1]
 
             def normalized_term(document):
                 return [normalizad_word_dict[term] if term in normalizad_word_dict else term for term in document]
