@@ -11,13 +11,6 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import json
 import matplotlib.pyplot as plt
 
-# --- NLTK resource download otomatis ---
-nltk.download('punkt', quiet=True)
-nltk.download('punkt_tab', quiet=True)
-nltk.download('stopwords', quiet=True)
-nltk.download('vader_lexicon', quiet=True)
-
-
 def main():
     st.set_page_config(page_title="Sentiment Analysis App")
     st.markdown("<h2 style='text-align: center; color: black;'>ANALISIS SENTIMEN OPINI MASYARAKAT TENTANG VAKSIN MODERNA MENGGUNAKAN METODE RECURRENT NEURAL NETWORK</h2>", unsafe_allow_html=True)
